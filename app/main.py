@@ -2,32 +2,32 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 import edge_tts
 import io
+import httpx # You may need to add this to requirements.txt
 
 app = FastAPI()
-
-# Recommended "Real Human" Voice IDs
-# Hindi (India): hi-IN-MadhurNeural (Male), hi-IN-SwaraNeural (Female)
-# English (US): en-US-GuyNeural (Male), en-US-AvaNeural (Female)
 
 @app.get("/tts")
 async def text_to_speech(
     text: str = Query(..., description="The text to convert to speech"),
-    voice: str = Query("hi-IN-MadhurNeural", description="Voice ID (e.g., hi-IN-MadhurNeural or en-US-AvaNeural)"),
-    rate: str = Query("+0%", description="Speed: use numbers like -10 or +20")
+    voice: str = Query("en-US-GuyNeural", description="Voice ID"),
+    rate: str = Query("-10%", description="The speed of the voice")
 ):
     try:
-        # --- AUTO-FIX FOR INVALID RATE ERROR ---
-        # Ensure rate has a '+' or '-' and always ends with '%'
-        clean_rate = rate.strip()
-        if '%' not in clean_rate:
-            if not clean_rate.startswith(('-', '+')):
-                clean_rate = f"+{clean_rate}%"
-            else:
-                clean_rate = f"{clean_rate}%"
+        # Fix: Ensure rate always ends with %
+        clean_rate = rate if '%' in rate else f"{rate}%"
         
-        # Create the TTS object with the cleaned rate
-        communicate = edge_tts.Communicate(text, voice, rate=clean_rate)
+        # 1. GET CHAT RESPONSE FROM OPENAI (Directly in backend for stability)
+        # Using the new 2026 stable endpoint
+        brain_url = f"https://gen.pollinations.ai/prompt/{text}?model=openai"
         
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(brain_url)
+            if resp.status_code != 200:
+                raise Exception("AI Brain is currently offline")
+            ai_text = resp.text.replace('*', '').replace('#', '').strip()
+
+        # 2. GENERATE SPEECH
+        communicate = edge_tts.Communicate(ai_text, voice, rate=clean_rate)
         audio_data = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -37,9 +37,4 @@ async def text_to_speech(
         return StreamingResponse(audio_data, media_type="audio/mpeg")
     
     except Exception as e:
-        # Detailed error reporting
-        raise HTTPException(status_code=500, detail=f"TTS Error: {str(e)}")
-
-@app.get("/")
-async def read_root():
-    return {"status": "Online", "voices": ["hi-IN-MadhurNeural", "en-US-AvaNeural"]}
+        raise HTTPException(status_code=500, detail=str(e))
