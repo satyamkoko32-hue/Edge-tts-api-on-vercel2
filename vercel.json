@@ -1,12 +1,6 @@
 {
   "rewrites": [
-    {
-      "source": "/tts",
-      "destination": "app/main.py"
-    },
-    {
-      "source": "/",
-      "destination": "app/main.py"
-    }
+    { "source": "/tts", "destination": "/api/main.py" },
+    { "source": "/(.*)", "destination": "/api/main.py" }
   ]
 }
