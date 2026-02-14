@@ -7,7 +7,7 @@ import re
 
 app = FastAPI()
 
-# Enable CORS so your website can talk to this API
+# Fixes Mobile/Web connection issues
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,26 +16,24 @@ app.add_middleware(
 )
 
 def is_hindi(text):
-    # Detects Devanagari (Hindi) characters
+    # Detects Hindi characters
     return bool(re.search(r'[\u0900-\u097F]', text))
 
 @app.get("/tts")
 async def text_to_speech(
-    text: str = Query(..., description="The text to convert to speech"),
-    rate: str = Query("-10%", description="The speed of the voice")
+    text: str = Query(..., description="Text to convert"),
+    rate: str = Query("-10%", description="Speed")
 ):
     try:
-        # 1. CLEAN RATE: Ensure it always has the % sign
+        # 1. Clean the speed parameter
         clean_rate = rate if '%' in rate else f"{rate}%"
-        if not clean_rate.startswith(('-', '+')):
-            clean_rate = f"+{clean_rate}"
         
-        # 2. SELECT THE MOST REALISTIC NEURAL VOICES
-        # English: 'en-US-AndrewNeural' is very high quality/human
-        # Hindi: 'hi-IN-MadhurNeural' is the standard for natural male voice
+        # 2. Select High-Quality Neural Voices
+        # 'Andrew' is the most realistic US English voice
+        # 'Madhur' is the most realistic Hindi male voice
         voice = "hi-IN-MadhurNeural" if is_hindi(text) else "en-US-AndrewNeural"
         
-        # 3. GENERATE SPEECH
+        # 3. Generate the human-like audio
         communicate = edge_tts.Communicate(text, voice, rate=clean_rate)
         audio_data = io.BytesIO()
         
@@ -44,18 +42,11 @@ async def text_to_speech(
                 audio_data.write(chunk["data"])
         
         audio_data.seek(0)
-        
-        # 4. RETURN MP3 STREAM
-        return StreamingResponse(
-            audio_data, 
-            media_type="audio/mpeg",
-            headers={"Content-Disposition": "inline; filename='speech.mp3'"}
-        )
-    
+        return StreamingResponse(audio_data, media_type="audio/mpeg")
+
     except Exception as e:
-        print(f"Server Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
-async def read_root():
-    return {"status": "Online", "model": "Neural-Human-V2"}
+async def health():
+    return {"status": "Online", "voice_engine": "Neural human v2"}
