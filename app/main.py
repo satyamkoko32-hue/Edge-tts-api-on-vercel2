@@ -7,7 +7,7 @@ import re
 
 app = FastAPI()
 
-# Fixes Mobile/Web connection issues
+# CRITICAL: This allows your mobile website to talk to your Vercel backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,7 +16,6 @@ app.add_middleware(
 )
 
 def is_hindi(text):
-    # Detects Hindi characters
     return bool(re.search(r'[\u0900-\u097F]', text))
 
 @app.get("/tts")
@@ -25,15 +24,9 @@ async def text_to_speech(
     rate: str = Query("-10%", description="Speed")
 ):
     try:
-        # 1. Clean the speed parameter
         clean_rate = rate if '%' in rate else f"{rate}%"
-        
-        # 2. Select High-Quality Neural Voices
-        # 'Andrew' is the most realistic US English voice
-        # 'Madhur' is the most realistic Hindi male voice
         voice = "hi-IN-MadhurNeural" if is_hindi(text) else "en-US-AndrewNeural"
         
-        # 3. Generate the human-like audio
         communicate = edge_tts.Communicate(text, voice, rate=clean_rate)
         audio_data = io.BytesIO()
         
@@ -42,11 +35,16 @@ async def text_to_speech(
                 audio_data.write(chunk["data"])
         
         audio_data.seek(0)
-        return StreamingResponse(audio_data, media_type="audio/mpeg")
-
+        
+        # Return as a proper MP3 stream that mobile browsers recognize
+        return StreamingResponse(
+            audio_data, 
+            media_type="audio/mpeg",
+            headers={
+                "Content-Type": "audio/mpeg",
+                "Accept-Ranges": "bytes"
+            }
+        )
     except Exception as e:
+        print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/")
-async def health():
-    return {"status": "Online", "voice_engine": "Neural human v2"}
